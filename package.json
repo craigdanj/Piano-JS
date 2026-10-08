@@ -1,0 +1,6 @@
+{
+  "name": "piano-js",
+  "private": true,
+  "type": "module",
+  "license": "MIT"
+}
