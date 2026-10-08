@@ -14,12 +14,31 @@ Open http://localhost:8080 and select **Enable sound**. Use the onscreen keys or
 
 ## Architecture
 
-- `dist/piano-core.js`: 40-voice engine, 1–3 strings per note, cubic fractional-delay interpolation, loop-phase tuning, dispersive allpass, frequency-dependent damping, nonlinear felt contact with returning-string feedback, passive unison-string coupling, interpolated register voicing, strike-position cancellation, and pedal-controlled sympathetic resonators.
+- `dist/piano-core.js`: 40-voice engine, 1–3 strings per note, cubic fractional-delay interpolation, loop-phase tuning, dispersive allpass, frequency-dependent damping, nonlinear felt contact with returning-string feedback, passive unison-string coupling, interpolated register voicing, strike-position cancellation, and key- and pedal-controlled sympathetic resonators.
 - `dist/piano-worklet.js`: AudioWorklet wrapper and message interface.
 - `dist/app.js`: interaction, soundboard EQ, generated room impulse, output compression, and waveform display.
 - `dist/index.html` and `dist/style.css`: responsive instrument interface.
 
 The hammer uses a simplified quadratic felt force law, four implicit contact substeps per audio sample, and hammer rebound. Returning waveguide output provides approximate contact feedback; this is not a spatially exact bidirectional string/hammer model. Soundboard response and sympathetic coupling are perceptual approximations. Parameters are hand-tuned, not fitted to recordings of a specific grand piano. This is an acoustic-style synthesis prototype, not a claim of concert-grand equivalence.
+
+## Soundboard and sympathetic resonance
+
+- **Soundboard:** twelve damped modes from 95 to 2719 Hz add short, stereo body
+  resonances alongside the unchanged dry strings. The Soundboard slider controls
+  their amount independently of room reverb and the existing body EQ.
+- **Sympathetic strings:** 88 note resonators, each with a fundamental and second
+  partial, replace the old 36-mode pedal-only bank. Held keys leave their modes
+  open even with the pedal up. Sustain opens all modes; releasing the pedal
+  damps unheld notes smoothly. Notes 89–108 remain undamped, like the existing
+  high-register voices. All notes off damps every sympathetic mode.
+- Resonance is driven by the summed dry strings without recursive cross-feedback.
+  It is an efficient approximation, not a full mechanical bridge/string network.
+  The soundboard and sympathetic modes use sample-rate-derived decay coefficients.
+- Both sliders range from 0–100%, with smoothed live changes. Zero removes that
+  effect from the output. Grand defaults to 30% soundboard and 35% sympathetic;
+  Felt uses 22%/25%, and Bright uses 20%/25%.
+- Set Room to zero when judging the instrument resonances. Compare the new sliders
+  at zero and their defaults to hear their contribution without room reverb.
 
 ## Definition tuning
 
@@ -65,15 +84,15 @@ separate from the strings.
 node.port.postMessage({type: 'on', note: 60, velocity: 0.75});
 node.port.postMessage({type: 'off', note: 60});
 node.port.postMessage({type: 'pedal', down: true});
-node.port.postMessage({type: 'params', tone: 0.5, decay: 1, width: 0.55});
+node.port.postMessage({type: 'params', tone: 0.5, decay: 1, width: 0.55, body: 0.3, resonance: 0.35});
 node.port.postMessage({type: 'stop'});
 ```
 
-Tone and width range from 0 to 1; decay ranges from 0.4 to 1.7. Voice parameters update on subsequent strikes. Audio runs at the actual AudioContext sample rate. Upper notes without dampers decay naturally after key release. All-notes-off damps every active voice.
+Tone, width, body, and resonance range from 0 to 1; decay ranges from 0.4 to 1.7. Tone, decay, and width update on subsequent strikes. Body and resonance amounts update smoothly on already sounding notes. Audio runs at the actual AudioContext sample rate. Upper notes without dampers decay naturally after key release. All-notes-off damps every active voice.
 
 ## Validation
 
-`node check-audio.mjs` checks all 88 keys for audible output, soft/hard representative strikes at 44.1, 48 and 96 kHz, finite stereo output, velocity dynamics, dampers, sustain, repeated strikes, voice reuse, and 40-voice stress. It prints results and rendering performance. It writes temporary raw float audio under `/tmp` for spectral inspection. This is not a perceptual listening test or a guarantee of performance on every phone.
+`node check-audio.mjs` checks all 88 keys for audible output, soft/hard representative strikes at 44.1, 48 and 96 kHz, finite stereo output, velocity dynamics, dampers, sustain, repeated strikes, voice reuse, and 40-voice stress. It prints results and rendering performance. `node check-resonance.mjs` additionally checks held-key response, pedal resonance, pedal-lift damping, soundboard decay, maximum-effect stability, and panic-tail release at all three sample rates. It writes temporary raw float audio under `/tmp` for spectral inspection. This is not a perceptual listening test or a guarantee of performance on every phone.
 
 ## Downloaded project
 

@@ -72,18 +72,54 @@ class StringModel {
   if(++this.pos===size)this.pos=0;
  }
 }
+// Stable complex resonators, excited only from the dry strings (no feedback loop).
+export class AcousticResonance {
+ constructor(sr){
+  this.sr=sr;this.left=0;this.right=0;this.bodyLeft=0;this.bodyRight=0;
+  this.smooth=1-Math.exp(-1/(sr*.012));
+  const mode=(f,tau,weight,pan)=>{const w=2*Math.PI*f/sr,r=Math.exp(-1/(sr*tau));return {c:Math.cos(w),s:Math.sin(w),r,target:r,open:r,closed:Math.exp(-1/(sr*.018)),drive:2*(1-r),re:0,im:0,weight,pan};};
+  this.strings=[];
+  for(let note=21;note<=108;note++)for(let harmonic=1;harmonic<=2;harmonic++){
+   const f=440*2**((note-69)/12)*harmonic;
+   if(f>=sr*.44)continue;
+   const q=mode(f,clamp(2.4-(note-21)*.019,.5,2.4)/harmonic,harmonic===1?1:.32,clamp((note-64)/64,-.6,.6));
+   q.note=note;q.r=q.target=note>=89?q.open:q.closed;this.strings.push(q);
+  }
+  this.body=[95,137,191,263,347,463,617,823,1097,1481,1993,2719].map((f,i)=>mode(f,.16/(1+f/650),1/Math.sqrt(12)*(1-i*.035),(i%2?1:-1)*.24));
+ }
+ dampers(keys,pedal,panic=false){for(const q of this.strings)q.target=!panic&&(pedal||keys[q.note]||q.note>=89)?q.open:q.closed;}
+ tick(input){
+  let l=0,r=0;
+  for(const q of this.strings){
+   q.r+=(q.target-q.r)*this.smooth;
+   const re=q.r*(q.c*q.re-q.s*q.im)+q.drive*input;
+   q.im=q.r*(q.s*q.re+q.c*q.im);q.re=re;
+   const x=re*q.weight;l+=x*(1-q.pan);r+=x*(1+q.pan);
+  }
+  this.left=l*.45;this.right=r*.45;
+  l=0;r=0;
+  for(const q of this.body){
+   const re=q.r*(q.c*q.re-q.s*q.im)+q.drive*input;
+   q.im=q.r*(q.s*q.re+q.c*q.im);q.re=re;
+   const x=re*q.weight;l+=x*(1-q.pan);r+=x*(1+q.pan);
+  }
+  this.bodyLeft=l*1.7;this.bodyRight=r*1.7;
+ }
+}
 export class PianoCore {
  constructor(sr,polyphony=40){
   if(!Number.isFinite(sr)||sr<22050||sr>192000)throw new RangeError('Sample rate must be 22050–192000 Hz');
   this.sr=sr;this.pedal=false;this.tone=.5;this.decay=1;this.width=.5;this.counter=0;
   this.voices=Array.from({length:polyphony},()=>({active:false,strings:Array.from({length:3},()=>new StringModel(sr)),hammer:new Hammer(),env:0}));
-  const radius=Math.exp(-1/(sr*.02975));
-  this.res=Array.from({length:36},(_,i)=>{let f=110*2**(i/12);return {c:2*Math.cos(2*Math.PI*f/sr)*radius,r:radius**2,y1:0,y2:0};});
+  this.keys=new Uint8Array(128);this.acoustics=new AcousticResonance(sr);
+  this.body=.3;this.resonance=.35;this.bodyMix=.3;this.resonanceMix=.35;
+  this.mixSmooth=1-Math.exp(-1/(sr*.025));
   this.left=0;this.right=0;this.seed=91823;
  }
  noteOn(note,velocity=.7){
   if(!Number.isFinite(note)||!Number.isFinite(velocity))return;
   note=clamp(Math.round(note),21,108);velocity=clamp(velocity,.03,1);
+  this.keys[note]=1;this.acoustics.dampers(this.keys,this.pedal);
   let v=this.voices.find(v=>!v.active);
   if(!v)v=this.voices.reduce((a,b)=>(a.held===b.held?a.env<b.env:!a.held)?a:b);
   v.note=note;v.active=true;v.held=true;v.released=false;v.age=0;v.id=++this.counter;v.env=0;
@@ -100,9 +136,13 @@ export class PianoCore {
   v.pan=clamp((note-64)/52,-.65,.65)*width;v.level=(.55+velocity*.65)*.32*p.level/v.count;
   v.noise=velocity*velocity*.006;v.noiseLp=0;
  }
- noteOff(note){for(const v of this.voices)if(v.active&&v.note===note){v.held=false;if(!this.pedal&&note<89)v.released=true;}}
- setPedal(down){this.pedal=!!down;if(!down)for(const v of this.voices)if(v.active&&!v.held&&v.note<89)v.released=true;}
- stop(){for(const v of this.voices){v.held=false;v.released=true;v.hammer.active=false;}this.pedal=false;}
+ noteOff(note){
+  if(Number.isInteger(note)&&note>=0&&note<128)this.keys[note]=0;
+  for(const v of this.voices)if(v.active&&v.note===note){v.held=false;if(!this.pedal&&note<89)v.released=true;}
+  this.acoustics.dampers(this.keys,this.pedal);
+ }
+ setPedal(down){this.pedal=!!down;if(!down)for(const v of this.voices)if(v.active&&!v.held&&v.note<89)v.released=true;this.acoustics.dampers(this.keys,this.pedal);}
+ stop(){for(const v of this.voices){v.held=false;v.released=true;v.hammer.active=false;}this.pedal=false;this.keys.fill(0);this.acoustics.dampers(this.keys,false,true);}
  tick(){
   let l=0,r=0,send=0;
   for(const v of this.voices){if(!v.active)continue;let x=0,mean=0,incoming=0;
@@ -121,8 +161,10 @@ export class PianoCore {
    if((v.age>this.sr*.6&&v.env<.000012)||v.age>this.sr*35){v.active=false;continue;}
    l+=x*(1-v.pan)*.707;r+=x*(1+v.pan)*.707;send+=x;
   }
-  let sympathetic=0;
-  for(const q of this.res){const y=q.c*q.y1-q.r*q.y2+(this.pedal?send*.000016*(48000/this.sr):0);q.y2=q.y1;q.y1=y;sympathetic+=y;}
-  this.left=l+sympathetic*.25;this.right=r+sympathetic*.28;
+  this.acoustics.tick(send);
+  this.bodyMix+=(clamp(this.body,0,1)-this.bodyMix)*this.mixSmooth;
+  this.resonanceMix+=(clamp(this.resonance,0,1)-this.resonanceMix)*this.mixSmooth;
+  this.left=l+this.bodyMix*this.acoustics.bodyLeft+this.resonanceMix*this.acoustics.left;
+  this.right=r+this.bodyMix*this.acoustics.bodyRight+this.resonanceMix*this.acoustics.right;
  }
 }

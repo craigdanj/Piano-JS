@@ -1,5 +1,15 @@
 # Piano JS changes
 
+## Soundboard and sympathetic resonance — 2026-10-08
+
+- Add twelve stereo soundboard modes in parallel with the dry strings.
+- Replace the pedal-only resonance bank with 88 fundamental/second-partial pairs.
+- Track held keys independently of voice allocation; smoothly damp released keys.
+- Add independent Soundboard and Sympathetic sliders and conservative preset levels.
+- Preserve the crisper hammer and bridge tuning.
+- Add targeted resonance validation across 44.1, 48, and 96 kHz.
+
+
 ## Crisper tuning — 2026-10-08
 
 - Shorten contact scales across registers for a more defined excitation.

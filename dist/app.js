@@ -13,7 +13,7 @@ for(let n=48;n<=84;n++){
 }
 function labels(){for(const[n,e]of keyElements){const k=Object.keys(keyMap).find(k=>base+keyMap[k]===n);e.querySelector('b').textContent=k?k.toUpperCase():'';}$('octave').textContent=noteName(base);$('octDown').disabled=base<=48;$('octUp').disabled=base>=72;}
 labels();
-function params(){node?.port.postMessage({type:'params',tone:+$('tone').value/100,decay:+$('decay').value/100,width:.55});if(master)master.gain.setTargetAtTime(+$('volume').value/100*.75,ctx.currentTime,.03);if(wet)wet.gain.setTargetAtTime(+$('room').value/100*.65,ctx.currentTime,.03);}
+function params(){node?.port.postMessage({type:'params',tone:+$('tone').value/100,decay:+$('decay').value/100,width:.55,body:+$('body').value/100,resonance:+$('resonance').value/100});if(master)master.gain.setTargetAtTime(+$('volume').value/100*.75,ctx.currentTime,.03);if(wet)wet.gain.setTargetAtTime(+$('room').value/100*.65,ctx.currentTime,.03);}
 function send(d){node?.port.postMessage(d);}
 async function enable(){
  if(ctx&&node){await ctx.resume();return;}
@@ -49,9 +49,9 @@ function stopDemo(){for(const t of demoTimers)clearTimeout(t);demoTimers=[];demo
 function stop(){generation++;stopDemo();pressed.clear();pointers.clear();held.clear();pedalLatch=false;spaceHeld=false;pedal();send({type:'stop'});for(const[n]of keyElements)showNote(n,false);$('noteReadout').textContent='ALL NOTES RELEASED';}
 $('power').onclick=()=>enable().catch(console.error);
 $('stop').onclick=stop;$('sustain').onclick=async()=>{try{await enable();pedalLatch=!pedalLatch;pedal();}catch(e){console.error(e);}};
-for(const id of ['tone','decay','room','volume'])$(id).oninput=()=>{$(id+'Out').textContent=$(id).value+'%';params();};
-const presets={grand:[50,100,24,'Clear attack. Warm, lingering strings.'],felt:[15,80,30,'A softer strike. Close and unhurried.'],bright:[90,90,17,'Crisp hammers. A more forward voice.']};
-$('preset').onchange=()=>{const p=presets[$('preset').value];['tone','decay','room'].forEach((id,i)=>{$(id).value=p[i];$(id+'Out').textContent=p[i]+'%';});$('presetDesc').textContent=p[3];params();};
+for(const id of ['tone','decay','room','volume','body','resonance'])$(id).oninput=()=>{$(id+'Out').textContent=$(id).value+'%';params();};
+const presets={grand:[50,100,24,'Clear attack. Warm, lingering strings.',30,35],felt:[15,80,30,'A softer strike. Close and unhurried.',22,25],bright:[90,90,17,'Crisp hammers. A more forward voice.',20,25]};
+$('preset').onchange=()=>{const p=presets[$('preset').value];['tone','decay','room'].forEach((id,i)=>{$(id).value=p[i];$(id+'Out').textContent=p[i]+'%';});['body','resonance'].forEach((id,i)=>{$(id).value=p[4+i];$(id+'Out').textContent=p[4+i]+'%';});$('presetDesc').textContent=p[3];params();};
 function octave(delta){base=Math.max(48,Math.min(72,base+delta));labels();}
 $('octDown').onclick=()=>octave(-12);$('octUp').onclick=()=>octave(12);
 function touchVelocity(e,el){const r=el.getBoundingClientRect();return Math.max(.18,Math.min(1,.28+.72*(e.clientY-r.top)/r.height))*(+$('velocity').value/.72);}
